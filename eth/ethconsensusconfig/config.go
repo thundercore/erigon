@@ -20,6 +20,7 @@ import (
 	"github.com/ledgerwatch/erigon/consensus/clique"
 	"github.com/ledgerwatch/erigon/consensus/db"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
+	"github.com/ledgerwatch/erigon/consensus/pala"
 	"github.com/ledgerwatch/erigon/consensus/parlia"
 	"github.com/ledgerwatch/erigon/consensus/serenity"
 	"github.com/ledgerwatch/erigon/params"
@@ -97,6 +98,11 @@ func CreateConsensusEngine(chainConfig *chain.Config, logger log.Logger, config 
 				}
 				eng = bor.New(chainConfig, db, spanner, heimdallClient, genesisContractsClient)
 			}
+		}
+	case *chain.PalaConfig:
+		if chainConfig.Pala != nil {
+			dbPath := filepath.Join(datadir, "pala")
+			eng = pala.New(chainConfig, db.OpenDatabase(dbPath, logger, false, false))
 		}
 	}
 

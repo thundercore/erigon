@@ -1237,7 +1237,7 @@ func (p *Parlia) applyTransaction(from libcommon.Address, to libcommon.Address, 
 	receipt := types.NewReceipt(false, *usedGas)
 	receipt.TxHash = expectedTx.Hash()
 	receipt.GasUsed = gasUsed
-	if err := ibs.FinalizeTx(p.chainConfig.Rules(header.Number.Uint64(), header.Time), state.NewNoopWriter()); err != nil {
+	if err := ibs.FinalizeTx(p.chainConfig.Rules(header.Number.Uint64(), header.Time, 0), state.NewNoopWriter()); err != nil {
 		return nil, nil, nil, err
 	}
 	// Set the receipt logs and create a bloom for filtering
@@ -1266,7 +1266,7 @@ func (p *Parlia) systemCall(from, contract libcommon.Address, data []byte, ibs *
 	)
 	vmConfig := vm.Config{NoReceipts: true}
 	// Create a new context to be used in the EVM environment
-	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), p, &from)
+	blockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, nil), p, &from, nil)
 	evm := vm.NewEVM(blockContext, core.NewEVMTxContext(msg), ibs, chainConfig, vmConfig)
 	ret, leftOverGas, err := evm.Call(
 		vm.AccountRef(msg.From()),

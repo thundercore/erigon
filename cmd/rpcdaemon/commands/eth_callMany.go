@@ -13,6 +13,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -174,8 +175,14 @@ func (api *APIImpl) CallMany(ctx context.Context, bundles []Bundle, simulateCont
 
 	// Get a new instance of the EVM
 	evm = vm.NewEVM(blockCtx, txCtx, st, chainConfig, vm.Config{Debug: false})
-	signer := types.MakeSigner(chainConfig, blockNum)
-	rules := chainConfig.Rules(blockNum, blockCtx.Time)
+	session := blocksn.GetSessionFromDifficulty(parent.Difficulty, parent.Number, chainConfig.Pala)
+	signer := types.MakeSigner(chainConfig, blockNum, session)
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(blockCtx.Difficulty, parent.Number, chainConfig.Pala)
+	}
+
+	rules := chainConfig.Rules(blockNum, blockCtx.Time, sessionNum)
 
 	timeoutMilliSeconds := int64(5000)
 

@@ -26,6 +26,7 @@ import (
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/exp/slices"
 
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/systemcontracts"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/rlp"
@@ -129,7 +130,7 @@ func ExecuteBlockEphemerallyForBSC(
 			writeTrace = true
 		}
 
-		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig)
+		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, nil)
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {
 				ftracer.Flush(tx)
@@ -199,7 +200,7 @@ func ExecuteBlockEphemerallyForBSC(
 		}
 	}
 
-	if err := ibs.CommitBlock(chainConfig.Rules(header.Number.Uint64(), header.Time), stateWriter); err != nil {
+	if err := ibs.CommitBlock(chainConfig.Rules(header.Number.Uint64(), header.Time, 0), stateWriter); err != nil {
 		return nil, fmt.Errorf("committing block %d failed: %w", header.Number.Uint64(), err)
 	} else if err := stateWriter.WriteChangeSets(); err != nil {
 		return nil, fmt.Errorf("writing changesets for block %d failed: %w", header.Number.Uint64(), err)
@@ -231,6 +232,7 @@ func ExecuteBlockEphemerally(
 	epochReader consensus.EpochReader,
 	chainReader consensus.ChainHeaderReader,
 	getTracer func(txIndex int, txHash libcommon.Hash) (vm.EVMLogger, error),
+	stateRootCalFunc func(evmtypes.TxContext) (*libcommon.Hash, error),
 ) (*EphemeralExecResult, error) {
 
 	defer BlockExecutionTimer.UpdateDuration(time.Now())
@@ -257,7 +259,7 @@ func ExecuteBlockEphemerally(
 	if chainConfig.DAOForkSupport && chainConfig.DAOForkBlock != nil && chainConfig.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(ibs)
 	}
-	noop := state.NewNoopWriter()
+
 	//fmt.Printf("====txs processing start: %d====\n", block.NumberU64())
 	for i, tx := range block.Transactions() {
 		ibs.Prepare(tx.Hash(), block.Hash(), i)
@@ -271,7 +273,7 @@ func ExecuteBlockEphemerally(
 			writeTrace = true
 		}
 
-		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig)
+		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, stateWriter, header, tx, usedGas, *vmConfig, stateRootCalFunc)
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {
 				ftracer.Flush(tx)
@@ -382,7 +384,7 @@ func ExecuteBlockEphemerallyBor(
 			writeTrace = true
 		}
 
-		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig)
+		receipt, _, err := ApplyTransaction(chainConfig, blockHashFunc, engine, nil, gp, ibs, noop, header, tx, usedGas, *vmConfig, nil)
 		if writeTrace {
 			if ftracer, ok := vmConfig.Tracer.(vm.FlushableTracer); ok {
 				ftracer.Flush(tx)
@@ -493,7 +495,7 @@ func SysCallContract(contract libcommon.Address, data []byte, chainConfig chain.
 		author = &state.SystemAddress
 		txContext = NewEVMTxContext(msg)
 	}
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), engine, author, nil)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.Call(
@@ -529,7 +531,7 @@ func SysCreate(contract libcommon.Address, data []byte, chainConfig chain.Config
 	// Create a new context to be used in the EVM environment
 	author := &contract
 	txContext := NewEVMTxContext(msg)
-	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author)
+	blockContext := NewEVMBlockContext(header, GetHashFn(header, nil), nil, author, nil)
 	evm := vm.NewEVM(blockContext, txContext, ibs, &chainConfig, vmConfig)
 
 	ret, _, err := evm.SysCreate(
@@ -556,7 +558,7 @@ func CallContract(contract libcommon.Address, data []byte, chainConfig chain.Con
 		return nil, fmt.Errorf("SysCallContract: %w ", err)
 	}
 	vmConfig := vm.Config{NoReceipts: true}
-	_, result, err = ApplyTransaction(&chainConfig, GetHashFn(header, nil), engine, &state.SystemAddress, gp, ibs, noop, header, tx, &gasUsed, vmConfig)
+	_, result, err = ApplyTransaction(&chainConfig, GetHashFn(header, nil), engine, &state.SystemAddress, gp, ibs, noop, header, tx, &gasUsed, vmConfig, nil)
 	if err != nil {
 		return result, fmt.Errorf("SysCallContract: %w ", err)
 	}
@@ -578,7 +580,10 @@ func FinalizeBlockExecution(engine consensus.Engine, stateReader state.StateRead
 	syscall := func(contract libcommon.Address, data []byte) ([]byte, error) {
 		return SysCallContract(contract, data, *cc, ibs, header, engine, false /* constCall */)
 	}
-	if isMining {
+
+	isPala := cc.Pala != nil
+
+	if isMining || isPala {
 		newBlock, newTxs, newReceipt, err = engine.FinalizeAndAssemble(cc, header, ibs, txs, uncles, receipts, withdrawals, e, headerReader, syscall, nil)
 	} else {
 		_, _, err = engine.Finalize(cc, header, ibs, txs, uncles, receipts, withdrawals, e, headerReader, syscall)
@@ -587,7 +592,12 @@ func FinalizeBlockExecution(engine consensus.Engine, stateReader state.StateRead
 		return nil, nil, nil, err
 	}
 
-	if err := ibs.CommitBlock(cc.Rules(header.Number.Uint64(), header.Time), stateWriter); err != nil {
+	sessionNum := uint32(0)
+	if isPala {
+		sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, cc.Pala)
+	}
+
+	if err := ibs.CommitBlock(cc.Rules(header.Number.Uint64(), header.Time, sessionNum), stateWriter); err != nil {
 		return nil, nil, nil, fmt.Errorf("committing block %d failed: %w", header.Number.Uint64(), err)
 	}
 
@@ -602,6 +612,12 @@ func InitializeBlockExecution(engine consensus.Engine, chain consensus.ChainHead
 		return SysCallContract(contract, data, *cc, ibs, header, engine, false /* constCall */)
 	})
 	noop := state.NewNoopWriter()
-	ibs.FinalizeTx(cc.Rules(header.Number.Uint64(), header.Time), noop)
+
+	sessionNum := uint32(0)
+	if chain.Config().Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chain.Config().Pala)
+	}
+
+	ibs.FinalizeTx(cc.Rules(header.Number.Uint64(), header.Time, sessionNum), noop)
 	return nil
 }

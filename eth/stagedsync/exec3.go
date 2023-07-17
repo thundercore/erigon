@@ -34,6 +34,7 @@ import (
 	"github.com/ledgerwatch/erigon/cmd/state/exec3"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/rawdb/rawdbhelpers"
@@ -543,7 +544,8 @@ Loop:
 		txs := b.Transactions()
 		header := b.HeaderNoCopy()
 		skipAnalysis := core.SkipAnalysis(chainConfig, blockNum)
-		signer := *types.MakeSigner(chainConfig, blockNum)
+		session := blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+		signer := *types.MakeSigner(chainConfig, blockNum, session)
 
 		f := core.GetHashFn(header, getHeaderFunc)
 		getHashFnMute := &sync.Mutex{}
@@ -552,7 +554,7 @@ Loop:
 			defer getHashFnMute.Unlock()
 			return f(n)
 		}
-		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */)
+		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil)
 
 		if parallel {
 			select {
@@ -581,7 +583,12 @@ Loop:
 			}()
 		}
 
-		rules := chainConfig.Rules(blockNum, b.Time())
+		sessionNum := uint32(0)
+		if chainConfig.Pala != nil {
+			sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+		}
+
+		rules := chainConfig.Rules(blockNum, b.Time(), sessionNum)
 		var gasUsed uint64
 		for txIndex := -1; txIndex <= len(txs); txIndex++ {
 
@@ -1031,7 +1038,8 @@ func reconstituteStep(last bool,
 		txs := b.Transactions()
 		header := b.HeaderNoCopy()
 		skipAnalysis := core.SkipAnalysis(chainConfig, bn)
-		signer := *types.MakeSigner(chainConfig, bn)
+		session := blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+		signer := *types.MakeSigner(chainConfig, bn, session)
 
 		f := core.GetHashFn(header, getHeaderFunc)
 		getHashFnMute := &sync.Mutex{}
@@ -1040,8 +1048,14 @@ func reconstituteStep(last bool,
 			defer getHashFnMute.Unlock()
 			return f(n)
 		}
-		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */)
-		rules := chainConfig.Rules(bn, b.Time())
+		blockContext := core.NewEVMBlockContext(header, getHashFn, engine, nil /* author */, nil)
+
+		sessionNum := uint32(0)
+		if chainConfig.Pala != nil {
+			sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+		}
+
+		rules := chainConfig.Rules(bn, b.Time(), sessionNum)
 
 		for txIndex := -1; txIndex <= len(txs); txIndex++ {
 			if bitmap.Contains(inputTxNum) {

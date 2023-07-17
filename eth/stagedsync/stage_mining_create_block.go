@@ -17,6 +17,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/debug"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -152,8 +153,9 @@ func SpawnMiningCreateBlockStage(s *StageState, tx kv.RwTx, cfg MiningCreateBloc
 		family    mapset.Set // family set (used for checking uncle invalidity)
 		uncles    mapset.Set // uncle set
 	}
+	session := blocksn.GetSessionFromDifficulty(parent.Difficulty, parent.Number, cfg.chainConfig.Pala)
 	env := &envT{
-		signer:    types.MakeSigner(&cfg.chainConfig, blockNum),
+		signer:    types.MakeSigner(&cfg.chainConfig, blockNum, session),
 		ancestors: mapset.NewSet(),
 		family:    mapset.NewSet(),
 		uncles:    mapset.NewSet(),

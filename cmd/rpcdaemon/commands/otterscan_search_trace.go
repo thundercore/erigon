@@ -7,6 +7,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/turbo/rpchelper"
 	"github.com/ledgerwatch/log/v3"
 
@@ -64,7 +65,9 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 	cachedWriter := state.NewCachedWriter(noop, stateCache)
 
 	ibs := state.New(cachedReader)
-	signer := types.MakeSigner(chainConfig, blockNum)
+	blk := rawdb.ReadHeaderByNumber(dbtx, blockNum)
+	session := blocksn.GetSessionFromDifficulty(blk.Difficulty, blk.Number, chainConfig.Pala)
+	signer := types.MakeSigner(chainConfig, blockNum, session)
 
 	getHeader := func(hash common.Hash, number uint64) *types.Header {
 		h, e := api._blockReader.Header(ctx, dbtx, hash, number)
@@ -77,7 +80,11 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 
 	blockReceipts := rawdb.ReadReceipts(dbtx, block, senders)
 	header := block.Header()
-	rules := chainConfig.Rules(block.NumberU64(), header.Time)
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+	}
+	rules := chainConfig.Rules(block.NumberU64(), header.Time, sessionNum)
 	found := false
 	for idx, tx := range block.Transactions() {
 		ibs.Prepare(tx.Hash(), block.Hash(), idx)
@@ -85,7 +92,7 @@ func (api *OtterscanAPIImpl) traceBlock(dbtx kv.Tx, ctx context.Context, blockNu
 		msg, _ := tx.AsMessage(*signer, header.BaseFee, rules)
 
 		tracer := NewTouchTracer(searchAddr)
-		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil)
+		BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, nil)
 		TxContext := core.NewEVMTxContext(msg)
 
 		vmenv := vm.NewEVM(BlockContext, TxContext, ibs, chainConfig, vm.Config{Debug: true, Tracer: tracer})

@@ -440,6 +440,10 @@ func MockWithEverything(t *testing.T, gspec *core.Genesis, key *ecdsa.PrivateKey
 				cfg.HistoryV3,
 				cfg.TransactionsV3,
 			),
+			stagedsync.StageNotaCfg(mock.DB,
+				*mock.ChainConfig,
+				blockReader,
+			),
 			stagedsync.StageSendersCfg(mock.DB, mock.ChainConfig, false, dirs.Tmp, prune, blockRetire, mock.sentriesClient.Hd),
 			stagedsync.StageExecuteBlocksCfg(
 				mock.DB,
@@ -467,7 +471,8 @@ func MockWithEverything(t *testing.T, gspec *core.Genesis, key *ecdsa.PrivateKey
 			stagedsync.StageCallTracesCfg(mock.DB, prune, 0, dirs.Tmp),
 			stagedsync.StageTxLookupCfg(mock.DB, prune, dirs.Tmp, mock.BlockSnapshots, mock.ChainConfig.Bor),
 			stagedsync.StageFinishCfg(mock.DB, dirs.Tmp, forkValidator),
-			!withPosDownloader),
+			!withPosDownloader,
+		),
 		stagedsync.DefaultUnwindOrder,
 		stagedsync.DefaultPruneOrder,
 	)

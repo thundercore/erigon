@@ -10,15 +10,18 @@ import (
 )
 
 var (
-	datadirCli      string
-	chaindata       string
-	statsfile       string
-	block           uint64
-	changeSetBucket string
-	indexBucket     string
-	snapshotsCli    bool
-	chain           string
-	logdir          string
+	datadirCli         string
+	chaindata          string
+	statsfile          string
+	block              uint64
+	fromBlock          uint64
+	changeSetBucket    string
+	indexBucket        string
+	snapshotsCli       bool
+	chain              string
+	logdir             string
+	hardforkConfigFile string
+	commonConfigFile   string
 )
 
 func must(err error) {
@@ -29,6 +32,10 @@ func must(err error) {
 
 func withBlock(cmd *cobra.Command) {
 	cmd.Flags().Uint64Var(&block, "block", 0, "specifies a block number for operation")
+}
+
+func withFrom(cmd *cobra.Command) {
+	cmd.Flags().Uint64Var(&fromBlock, "from", 0, "specifies a block number for operation")
 }
 
 func withDataDir(cmd *cobra.Command) {
@@ -58,4 +65,12 @@ func withSnapshotBlocks(cmd *cobra.Command) {
 
 func withChain(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&chain, "chain", "", "pick a chain to assume (mainnet, sepolia, etc.)")
+}
+
+func withHardfork(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&hardforkConfigFile, "hardfork", "", "hardfork config file for ThunderCore chain")
+}
+
+func withCommonConfig(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&commonConfigFile, "common", "", "common config file for ThunderCore chain")
 }

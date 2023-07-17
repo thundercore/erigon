@@ -46,6 +46,11 @@ type PrecompiledContract interface {
 	Run(input []byte) ([]byte, error) // Run runs the precompiled contract
 }
 
+type PrecompiledThunderContract interface {
+	RequiredGas(input []byte) uint64                                // RequiredPrice calculates the contract gas use
+	Run(input []byte, evm *EVM, contract *Contract) ([]byte, error) // Run runs the precompiled contract
+}
+
 // PrecompiledContractsHomestead contains the default set of pre-compiled Ethereum
 // contracts used in the Frontier and Homestead releases.
 var PrecompiledContractsHomestead = map[libcommon.Address]PrecompiledContract{
@@ -223,6 +228,17 @@ func RunPrecompiledContract(p PrecompiledContract, input []byte, suppliedGas uin
 	suppliedGas -= gasCost
 	output, err := p.Run(input)
 	return output, suppliedGas, err
+}
+
+var PrecompiledThunderContracts func(*EVM) map[libcommon.Address]PrecompiledThunderContract
+var ThunderPrecompiledContracts map[libcommon.Address]PrecompiledThunderContract
+
+func RunPrecompiledThunderContract(p PrecompiledThunderContract, input []byte, contract *Contract, evm *EVM) (ret []byte, err error) {
+	gas := p.RequiredGas(input)
+	if contract.UseGas(gas) {
+		return p.Run(input, evm, contract)
+	}
+	return nil, ErrOutOfGas
 }
 
 // ECRECOVER implemented as a native contract.

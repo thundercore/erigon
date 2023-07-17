@@ -18,13 +18,16 @@ package vm
 
 import (
 	"hash"
+	"math/big"
 
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/common/math"
 	"github.com/ledgerwatch/log/v3"
 
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/vm/stack"
+	"github.com/ledgerwatch/erigon/params"
 )
 
 // Config are the configuration options for the Interpreter
@@ -142,6 +145,23 @@ func NewEVMInterpreter(evm VMInterpreter, cfg Config) *EVMInterpreter {
 	default:
 		jt = &frontierInstructionSet
 	}
+
+	palaConfig := evm.ChainConfig().Pala
+	session := blocksn.GetSessionFromDifficulty(evm.Context().Difficulty, big.NewInt(int64(evm.Context().BlockNumber)), palaConfig)
+	if palaConfig != nil && palaConfig.IsPala2P5GasTable(session) {
+		if jt[EXTCODEHASH] != nil {
+			jt[EXTCODEHASH].constantGas = params.Pala2P5ExtcodeHash
+		}
+		jt[EXTCODESIZE].constantGas = params.Pala2P5ExtcodeSize
+		jt[EXTCODECOPY].constantGas = params.Pala2P5ExtcodeCopy
+		jt[BALANCE].constantGas = params.Pala2P5Balance
+		jt[SLOAD].constantGas = params.Pala2P5SLoad
+		jt[CALL].constantGas = params.Pala2P5Calls
+		jt[CALLCODE].constantGas = params.Pala2P5Calls
+		jt[STATICCALL].constantGas = params.Pala2P5Calls
+		jt[DELEGATECALL].constantGas = params.Pala2P5Calls
+	}
+
 	if len(cfg.ExtraEips) > 0 {
 		jt = copyJumpTable(jt)
 		for i, eip := range cfg.ExtraEips {

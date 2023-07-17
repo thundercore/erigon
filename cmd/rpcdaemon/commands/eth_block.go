@@ -14,6 +14,7 @@ import (
 	"github.com/ledgerwatch/erigon/cl/clparams"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -112,8 +113,14 @@ func (api *APIImpl) CallBundle(ctx context.Context, txHashes []common.Hash, stat
 		Coinbase:   coinbase,
 	}
 
-	signer := types.MakeSigner(chainConfig, blockNumber)
-	rules := chainConfig.Rules(blockNumber, timestamp)
+	session := blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+	signer := types.MakeSigner(chainConfig, blockNumber, session)
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+	}
+
+	rules := chainConfig.Rules(blockNumber, timestamp, sessionNum)
 	firstMsg, err := txs[0].AsMessage(*signer, nil, rules)
 	if err != nil {
 		return nil, err

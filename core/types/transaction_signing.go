@@ -34,7 +34,7 @@ import (
 var ErrInvalidChainId = errors.New("invalid chain id for signer")
 
 // MakeSigner returns a Signer based on the given chain config and block number.
-func MakeSigner(config *chain.Config, blockNumber uint64) *Signer {
+func MakeSigner(config *chain.Config, blockNumber uint64, session uint32) *Signer {
 	var signer Signer
 	var chainId uint256.Int
 	if config.ChainID != nil {
@@ -44,24 +44,27 @@ func MakeSigner(config *chain.Config, blockNumber uint64) *Signer {
 		}
 	}
 	signer.unprotected = true
+
+	r := config.Rules(blockNumber, 0, session)
+
 	switch {
-	case config.IsLondon(blockNumber):
+	case r.IsLondon:
 		// All transaction types are still supported
 		signer.protected = true
 		signer.accesslist = true
 		signer.dynamicfee = true
 		signer.chainID.Set(&chainId)
 		signer.chainIDMul.Mul(&chainId, u256.Num2)
-	case config.IsBerlin(blockNumber):
+	case r.IsBerlin:
 		signer.protected = true
 		signer.accesslist = true
 		signer.chainID.Set(&chainId)
 		signer.chainIDMul.Mul(&chainId, u256.Num2)
-	case config.IsSpuriousDragon(blockNumber):
+	case r.IsSpuriousDragon:
 		signer.protected = true
 		signer.chainID.Set(&chainId)
 		signer.chainIDMul.Mul(&chainId, u256.Num2)
-	case config.IsHomestead(blockNumber):
+	case r.IsHomestead:
 	default:
 		// Only allow malleable transactions in Frontier
 		signer.maleable = true

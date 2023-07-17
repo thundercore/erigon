@@ -454,6 +454,10 @@ func New(stack *node.Node, config *ethconfig.Config, logger log.Logger) (*Ethere
 		consensusConfig = &config.Parlia
 	} else if chainConfig.Bor != nil {
 		consensusConfig = &config.Bor
+	} else if chainConfig.Pala != nil {
+		consensusConfig = &config.Pala
+		chainConfig.Pala = &config.Pala
+		log.Info("Thunder consensus engine is enabled", "config", chainConfig.Pala.PalaBlock.String())
 	} else {
 		consensusConfig = &config.Ethash
 	}
@@ -741,7 +745,7 @@ func (backend *Ethereum) Init(stack *node.Node, config *ethconfig.Config) error 
 	if casted, ok := backend.engine.(*bor.Bor); ok {
 		borDb = casted.DB
 	}
-	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine)
+	apiList := commands.APIList(chainKv, borDb, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine, backend.chainConfig, backend.genesisBlock)
 	authApiList := commands.AuthAPIList(chainKv, ethRpcClient, txPoolRpcClient, miningRpcClient, ff, stateCache, blockReader, backend.agg, httpRpcCfg, backend.engine)
 	go func() {
 		if err := cli.StartRpcServer(ctx, httpRpcCfg, apiList, authApiList); err != nil {

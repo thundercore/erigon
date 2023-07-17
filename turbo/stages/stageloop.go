@@ -407,6 +407,11 @@ func NewDefaultStages(ctx context.Context,
 			cfg.HistoryV3,
 			cfg.TransactionsV3,
 		),
+		stagedsync.StageNotaCfg(
+			db,
+			*controlServer.ChainConfig,
+			blockReader,
+		),
 		stagedsync.StageSendersCfg(db, controlServer.ChainConfig, false, dirs.Tmp, cfg.Prune, blockRetire, controlServer.Hd),
 		stagedsync.StageExecuteBlocksCfg(
 			db,

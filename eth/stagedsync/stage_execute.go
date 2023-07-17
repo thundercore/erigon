@@ -23,17 +23,20 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/temporal/historyv2"
 	libstate "github.com/ledgerwatch/erigon-lib/state"
 	"github.com/ledgerwatch/log/v3"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ledgerwatch/erigon/common/changeset"
 	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/pala"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/core/vm"
+	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/eth/calltracer"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
 	"github.com/ledgerwatch/erigon/eth/ethconfig/estimate"
@@ -45,6 +48,7 @@ import (
 	"github.com/ledgerwatch/erigon/turbo/services"
 	"github.com/ledgerwatch/erigon/turbo/shards"
 	"github.com/ledgerwatch/erigon/turbo/snapshotsync"
+	"github.com/ledgerwatch/erigon/turbo/trie"
 )
 
 const (
@@ -141,6 +145,7 @@ func executeBlock(
 	writeCallTraces bool,
 	initialCycle bool,
 	stateStream bool,
+	calculateStateRootFn func(state.WriterWithChangeSets, evmtypes.TxContext) (*common.Hash, error),
 ) error {
 	blockNum := block.NumberU64()
 	stateReader, stateWriter, err := newStateReaderWriter(batch, tx, block, writeChangesets, cfg.accumulator, initialCycle, stateStream)
@@ -169,12 +174,16 @@ func executeBlock(
 	isBor := cfg.chainConfig.Bor != nil
 	getHashFn := core.GetHashFn(block.Header(), getHeader)
 
+	calcRoot := func(txC evmtypes.TxContext) (*common.Hash, error) {
+		return calculateStateRootFn(stateWriter, txC)
+	}
+
 	if isPoSa {
 		execRs, err = core.ExecuteBlockEphemerallyForBSC(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, EpochReaderImpl{tx: tx}, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
 	} else if isBor {
 		execRs, err = core.ExecuteBlockEphemerallyBor(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, EpochReaderImpl{tx: tx}, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
 	} else {
-		execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, EpochReaderImpl{tx: tx}, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer)
+		execRs, err = core.ExecuteBlockEphemerally(cfg.chainConfig, &vmConfig, getHashFn, cfg.engine, block, stateReader, stateWriter, EpochReaderImpl{tx: tx}, ChainReaderImpl{config: cfg.chainConfig, tx: tx, blockReader: cfg.blockReader}, getTracer, calcRoot)
 	}
 	if err != nil {
 		return err
@@ -423,6 +432,8 @@ func SpawnExecuteBlocksStage(s *StageState, u Unwinder, tx kv.RwTx, toBlock uint
 		batch.Rollback()
 	}()
 
+	batchSize := 0
+
 Loop:
 	for blockNum := stageProgress + 1; blockNum <= to; blockNum++ {
 		if stoppedErr = common.Stopped(quit); stoppedErr != nil {
@@ -444,11 +455,48 @@ Loop:
 
 		lastLogTx += uint64(block.Transactions().Len())
 
+		batchCommit := func() error {
+			tmpSize := batch.BatchSize()
+			if err := batch.Commit(); err != nil {
+				return err
+			}
+			batchSize += tmpSize
+			return nil
+		}
+
+		calculateStateRootFn := func(stateWriter state.WriterWithChangeSets, txC evmtypes.TxContext) (*common.Hash, error) {
+			// commit batch into tx to calculate state root
+			// since tx is not committed, it is still usable for next block, so we don't have to renew batch
+			csw, ok := stateWriter.(IChangeSetWriter)
+			if !ok {
+				return nil, fmt.Errorf("invalid state writer type")
+			}
+
+			if err := batchCommit(); err != nil {
+				return nil, err
+			}
+			hash, err := StateRoot(tx, cfg.dirs.Tmp, cfg.engine, csw, blockNum)
+			if err != nil {
+				return nil, err
+			}
+
+			// stores state root in database, so we can replay without state trie
+			// key = stateRootKey + txHash
+			stateRootKey := append(kv.TTStateRootKey, txC.TxHash.Bytes()...)
+			stateRootKey = append(stateRootKey, byte(txC.RNGCounter))
+
+			if err := tx.Put(kv.TTConsensusInfo, stateRootKey, hash.Bytes()); err != nil {
+				return nil, err
+			}
+
+			return hash, nil
+		}
+
 		// Incremental move of next stages depend on fully written ChangeSets, Receipts, CallTraceSet
 		writeChangeSets := nextStagesExpectData || blockNum > cfg.prune.History.PruneTo(to)
 		writeReceipts := nextStagesExpectData || blockNum > cfg.prune.Receipts.PruneTo(to)
 		writeCallTraces := nextStagesExpectData || blockNum > cfg.prune.CallTraces.PruneTo(to)
-		if err = executeBlock(block, tx, batch, cfg, *cfg.vmConfig, writeChangeSets, writeReceipts, writeCallTraces, initialCycle, stateStream); err != nil {
+		if err = executeBlock(block, tx, batch, cfg, *cfg.vmConfig, writeChangeSets, writeReceipts, writeCallTraces, initialCycle, stateStream, calculateStateRootFn); err != nil {
 			if !errors.Is(err, context.Canceled) {
 				log.Warn(fmt.Sprintf("[%s] Execution failed", logPrefix), "block", blockNum, "hash", block.Hash().String(), "err", err)
 				if cfg.hd != nil {
@@ -463,13 +511,22 @@ Loop:
 		}
 		stageProgress = blockNum
 
-		shouldUpdateProgress := batch.BatchSize() >= int(cfg.batchSize)
+		if err := batchCommit(); err != nil {
+			return err
+		}
+
+		if err := updatePalaHashedState(cfg.engine, tx, cfg.dirs.Tmp, blockNum-1 != 0, blockNum-1, blockNum); err != nil {
+			return err
+		}
+
+		shouldUpdateProgress := batch.BatchSize() >= int(cfg.batchSize) || batchSize >= int(cfg.batchSize)
 		if shouldUpdateProgress {
 			log.Info("Committed State", "gas reached", currentStateGas, "gasTarget", gasState)
 			currentStateGas = 0
 			if err = batch.Commit(); err != nil {
 				return err
 			}
+			batchSize = 0
 			if err = s.Update(tx, stageProgress); err != nil {
 				return err
 			}
@@ -789,4 +846,173 @@ func PruneExecutionStage(s *PruneState, tx kv.RwTx, cfg ExecuteBlockCfg, ctx con
 		}
 	}
 	return nil
+}
+
+func extractHashStateCleanly(from kv.Tx, to kv.RwTx, tmp string) error {
+	logPrefix := "extractHashState"
+	ctx := context.Background()
+
+	accCollector := etl.NewCollector(logPrefix, tmp, etl.NewSortableBuffer(etl.BufferOptimalSize))
+	defer accCollector.Close()
+	accCollector.LogLvl(log.LvlTrace)
+	storageCollector := etl.NewCollector(logPrefix, tmp, etl.NewSortableBuffer(etl.BufferOptimalSize))
+	defer storageCollector.Close()
+	storageCollector.LogLvl(log.LvlTrace)
+
+	transform := func(k, v []byte) ([]byte, []byte, error) {
+		newK, err := transformPlainStateKey(k)
+		return newK, v, err
+	}
+	collect := func(k, v []byte) error {
+		if len(k) == 32 {
+			return accCollector.Collect(k, v)
+		}
+		return storageCollector.Collect(k, v)
+	}
+
+	{ //errgroup cancelation scope
+		// pipeline: extract -> transform -> collect
+		in, out := make(chan pair, 10_000), make(chan pair, 10_000)
+		g, ctx := errgroup.WithContext(ctx)
+		g.Go(func() error {
+			defer close(out)
+			return parallelTransform(ctx, in, out, transform, estimate.AlmostAllCPUs()).Wait()
+		})
+		g.Go(func() error { return collectChan(ctx, out, collect) })
+
+		if err := extractTableToChan(ctx, from, kv.PlainState, in, logPrefix); err != nil {
+			// if ctx canceled, then maybe it's because of error in errgroup
+			//
+			// errgroup doesn't play with pattern where some 1 goroutine-producer is outside of errgroup
+			// but RwTx doesn't allow move between goroutines
+			if errors.Is(err, context.Canceled) {
+				return g.Wait()
+			}
+			return err
+		}
+
+		if err := g.Wait(); err != nil {
+			return fmt.Errorf("g.Wait: %w", err)
+		}
+	}
+
+	args := etl.TransformArgs{Quit: ctx.Done()}
+	if err := accCollector.Load(to, kv.HashedAccounts, etl.IdentityLoadFunc, args); err != nil {
+		return fmt.Errorf("accCollector.Load: %w", err)
+	}
+	if err := storageCollector.Load(to, kv.HashedStorage, etl.IdentityLoadFunc, args); err != nil {
+		return fmt.Errorf("storageCollector.Load: %w", err)
+	}
+
+	return nil
+}
+
+func updatePalaHashedState(engine consensus.Engine, fromDb kv.Tx, tmp string, incremental bool, from, to uint64) error {
+	pala, ok := engine.(*pala.Pala)
+	if !ok {
+		return fmt.Errorf("invalid engine type")
+	}
+
+	ctx := context.Background()
+	logPrefix := "updatePalaHashedState"
+
+	rwTx, err := pala.Db.BeginRw(ctx)
+	if err != nil {
+		return err
+	}
+	defer rwTx.Rollback()
+
+	if !incremental {
+		if err := extractHashStateCleanly(fromDb, rwTx, tmp); err != nil {
+			return err
+		}
+	} else {
+		p := NewPromoter(fromDb, rwTx, datadir.Dirs{Tmp: tmp}, ctx)
+		if err := p.Promote(logPrefix, from, to, false, true, true); err != nil {
+			return err
+		}
+		if err := p.Promote(logPrefix, from, to, false, false, true); err != nil {
+			return err
+		}
+		if err := p.Promote(logPrefix, from, to, true, false, true); err != nil {
+			return err
+		}
+	}
+
+	return rwTx.Commit()
+}
+
+type IChangeSetWriter interface {
+	ChangeSetWriter() *state.ChangeSetWriter
+}
+
+func StateRoot(tx kv.Tx, tmp string, engine consensus.Engine, stateWriter IChangeSetWriter, blkn uint64) (*common.Hash, error) {
+	pala, ok := engine.(*pala.Pala)
+	if !ok {
+		return nil, fmt.Errorf("invalid engine type")
+	}
+
+	ctx := context.Background()
+
+	rwTx, err := pala.Db.BeginRw(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer rwTx.Rollback()
+
+	// extract currenty changes from tx to rwTx, and calcaulte state root
+	if blkn == 1 {
+		if err := extractHashStateCleanly(tx, rwTx, tmp); err != nil {
+			return nil, err
+		}
+	} else {
+		csw := stateWriter.ChangeSetWriter()
+		accountChanges, err := csw.GetAccountChanges()
+		if err != nil {
+			return nil, err
+		}
+		if err = historyv2.Mapper[kv.AccountChangeSet].Encode(blkn, accountChanges, func(k, v []byte) error {
+			if err = rwTx.AppendDup(kv.AccountChangeSet, k, v); err != nil {
+				return err
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+
+		storageChanges, err := csw.GetStorageChanges()
+		if err != nil {
+			return nil, err
+		}
+		if storageChanges.Len() != 0 {
+			if err = historyv2.Mapper[kv.StorageChangeSet].Encode(blkn, storageChanges, func(k, v []byte) error {
+				if err = rwTx.AppendDup(kv.StorageChangeSet, k, v); err != nil {
+					return err
+				}
+				return nil
+			}); err != nil {
+				return nil, err
+			}
+		}
+
+		logPrefix := "StateRoot"
+
+		p := NewPromoter(rwTx, rwTx, datadir.Dirs{Tmp: tmp}, ctx)
+		if err := p.PromoteCustom(tx, logPrefix, blkn-1, blkn, false, true, true); err != nil {
+			return nil, err
+		}
+		if err := p.PromoteCustom(tx, logPrefix, blkn-1, blkn, false, false, true); err != nil {
+			return nil, err
+		}
+		if err := p.PromoteCustom(tx, logPrefix, blkn-1, blkn, true, false, true); err != nil {
+			return nil, err
+		}
+	}
+
+	root, err := trie.CalcRoot("", rwTx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &root, nil
 }

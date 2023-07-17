@@ -17,6 +17,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	math2 "github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -751,8 +752,13 @@ func (api *TraceAPIImpl) ReplayTransaction(ctx context.Context, txHash libcommon
 		parentNr -= 1
 	}
 
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	}
+
 	// Returns an array of trace arrays, one trace array for each transaction
-	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), int(txnIndex), types.MakeSigner(chainConfig, blockNum), chainConfig.Rules(blockNum, block.Time()))
+	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), int(txnIndex), types.MakeSigner(chainConfig, blockNum, sessionNum), chainConfig.Rules(blockNum, block.Time(), sessionNum))
 	if err != nil {
 		return nil, err
 	}
@@ -834,8 +840,12 @@ func (api *TraceAPIImpl) ReplayBlockTransactions(ctx context.Context, blockNrOrH
 		}
 	}
 
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	}
 	// Returns an array of trace arrays, one trace array for each transaction
-	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), -1 /* all tx indices */, types.MakeSigner(chainConfig, blockNumber), chainConfig.Rules(blockNumber, block.Time()))
+	traces, err := api.callManyTransactions(ctx, tx, block.Transactions(), traceTypes, block.ParentHash(), rpc.BlockNumber(parentNr), block.Header(), -1 /* all tx indices */, types.MakeSigner(chainConfig, blockNumber, sessionNum), chainConfig.Rules(blockNumber, block.Time(), sessionNum))
 	if err != nil {
 		return nil, err
 	}

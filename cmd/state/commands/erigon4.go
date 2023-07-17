@@ -32,6 +32,7 @@ import (
 	"github.com/ledgerwatch/erigon/cmd/state/exec3"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -391,7 +392,13 @@ func processBlock23(startTxNum uint64, trace bool, txNumStart uint64, rw *Reader
 	gp := new(core.GasPool).AddGas(block.GasLimit())
 	usedGas := new(uint64)
 	var receipts types.Receipts
-	rules := chainConfig.Rules(block.NumberU64(), block.Time())
+
+	session := uint32(0)
+	if chainConfig.Pala != nil {
+		session = blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	}
+
+	rules := chainConfig.Rules(block.NumberU64(), block.Time(), session)
 	txNum := txNumStart
 	ww.w.SetTxNum(txNum)
 
@@ -425,7 +432,7 @@ func processBlock23(startTxNum uint64, trace bool, txNumStart uint64, rw *Reader
 			ibs.Prepare(tx.Hash(), block.Hash(), i)
 			ct := exec3.NewCallTracer()
 			vmConfig.Tracer = ct
-			receipt, _, err := core.ApplyTransaction(chainConfig, getHashFn, engine, nil, gp, ibs, ww, header, tx, usedGas, vmConfig)
+			receipt, _, err := core.ApplyTransaction(chainConfig, getHashFn, engine, nil, gp, ibs, ww, header, tx, usedGas, vmConfig, nil)
 			if err != nil {
 				return 0, nil, fmt.Errorf("could not apply tx %d [%x] failed: %w", i, tx.Hash(), err)
 			}

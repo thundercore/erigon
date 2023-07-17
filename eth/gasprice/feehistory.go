@@ -27,6 +27,7 @@ import (
 	"github.com/holiman/uint256"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon/consensus/misc"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/rpc"
 	"github.com/ledgerwatch/log/v3"
@@ -82,7 +83,17 @@ func (oracle *Oracle) processBlock(bf *blockFees, percentiles []float64) {
 	if bf.baseFee = bf.header.BaseFee; bf.baseFee == nil {
 		bf.baseFee = new(big.Int)
 	}
-	if chainconfig.IsLondon(bf.blockNumber + 1) {
+
+	isLondon := false
+
+	if chainconfig.Pala != nil {
+		session := blocksn.GetSessionFromDifficulty(bf.header.Difficulty, bf.header.Number, chainconfig.Pala)
+		isLondon = chainconfig.Rules(bf.header.Number.Uint64(), 0, session).IsLondon
+	} else {
+		isLondon = chainconfig.IsLondon(bf.blockNumber + 1)
+	}
+
+	if isLondon {
 		bf.nextBaseFee = misc.CalcBaseFee(chainconfig, bf.header)
 	} else {
 		bf.nextBaseFee = new(big.Int)

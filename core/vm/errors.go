@@ -42,6 +42,8 @@ var (
 	ErrInvalidCode              = errors.New("invalid code")
 	ErrNonceUintOverflow        = errors.New("nonce uint64 overflow")
 
+	ErrDelegateCallUnsupported = errors.New("delegate call unsupported for thunder precompiled contract")
+
 	// errStopToken is an internal token indicating interpreter loop termination,
 	// never returned to outside callers.
 	errStopToken = errors.New("stop token")

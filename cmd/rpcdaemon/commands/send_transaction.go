@@ -12,6 +12,7 @@ import (
 	"github.com/ledgerwatch/log/v3"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -68,7 +69,9 @@ func (api *APIImpl) SendRawTransaction(ctx context.Context, encodedTx hexutil.By
 		return common.Hash{}, fmt.Errorf("invalid chain id, expected: %d got: %d", chainId, *txnChainId)
 	}
 
-	signer := types.MakeSigner(cc, *blockNum)
+	blk := rawdb.ReadHeaderByNumber(tx, *blockNum)
+	session := blocksn.GetSessionFromDifficulty(blk.Difficulty, blk.Number, cc.Pala)
+	signer := types.MakeSigner(cc, *blockNum, session)
 	from, err := txn.Sender(*signer)
 	if err != nil {
 		return common.Hash{}, err

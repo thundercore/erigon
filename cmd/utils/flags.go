@@ -25,6 +25,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/ledgerwatch/erigon-lib/chain"
@@ -34,6 +35,8 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/metrics"
 	downloadercfg2 "github.com/ledgerwatch/erigon-lib/downloader/downloadercfg"
 	"github.com/ledgerwatch/erigon-lib/kv"
+	ttConfig "github.com/ledgerwatch/erigon-lib/thunder/config"
+	"github.com/ledgerwatch/erigon-lib/thunder/hardfork"
 	"github.com/ledgerwatch/erigon-lib/txpool"
 	"github.com/ledgerwatch/log/v3"
 	"github.com/spf13/cobra"
@@ -44,6 +47,8 @@ import (
 	"github.com/ledgerwatch/erigon/cmd/downloader/downloadernat"
 	"github.com/ledgerwatch/erigon/common/paths"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/committee"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/precompile"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/eth/ethconfig"
@@ -767,6 +772,31 @@ var (
 		Name:  "diagnostics.url",
 		Usage: "URL of the diagnostics system provided by the support team",
 	}
+
+	// ThunderCore stuff
+	TTHardforkConfigPathFlag = cli.StringFlag{
+		Name:  "tt.hardfork.config",
+		Usage: "Path to the config file for ThunderCore hardfork config in YAML format",
+		Value: "",
+	}
+
+	TTCommonConfigPathFlag = cli.StringFlag{
+		Name:  "tt.common.config",
+		Usage: "Path to the config file for ThunderCore common config in YAML format",
+		Value: "",
+	}
+
+	TxPoolEvictDurationFlag = cli.DurationFlag{
+		Name:  "txpool.evict",
+		Usage: "Duration after which transactions are evicted from the pool",
+		Value: 12 * time.Second,
+	}
+
+	RPCGetLogsMaxRangeFlag = cli.Int64Flag{
+		Name:  "rpc.getlogs.range",
+		Usage: "Maximum block range for RPC eth_getLogs",
+		Value: -1,
+	}
 )
 
 var MetricFlags = []cli.Flag{&MetricsEnabledFlag, &MetricsHTTPFlag, &MetricsPortFlag}
@@ -1349,6 +1379,105 @@ func setBorConfig(ctx *cli.Context, cfg *ethconfig.Config) {
 	cfg.HeimdallgRPCAddress = ctx.String(HeimdallgRPCAddressFlag.Name)
 }
 
+func setPalaConfig(ctx *cli.Context, ethCfg *ethconfig.Config, cfg *chain.PalaConfig) {
+	hardforkConfigFile := ctx.String(TTHardforkConfigPathFlag.Name)
+	commonConfigFile := ctx.String(TTCommonConfigPathFlag.Name)
+
+	if hardforkConfigFile == "" || commonConfigFile == "" {
+		return
+	}
+
+	ethCfg.TxPool.LifeTime = ctx.Duration(TxPoolEvictDurationFlag.Name)
+
+	var err error
+	cfg.Hardforks = hardfork.NewHardforks(hardforkConfigFile)
+	cfg.Common, err = ttConfig.New(commonConfigFile)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load thunder common config: %v", err))
+	}
+	committee.ThunderCoreGenesisCommInfo, err = committee.ReadGenesisCommInfo(cfg.Common.Key.GenesisCommPath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load genesis committee info: %v", err))
+	}
+	committee.AlterCommInfo, err = committee.ReadAlterCommInfo(cfg.Common.Key.AlterCommPath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load alter committee info: %v", err))
+	}
+
+	palaHardfork := hardfork.NewBoolHardforkConfig(
+		"pala.hardfork",
+		"The number of block we start run with pala protocol",
+	)
+
+	cfg.PalaBlock = big.NewInt(palaHardfork.GetEnabledBlockNum(cfg.Hardforks))
+
+	verifyBid := hardfork.NewBoolHardforkConfig(
+		"committee.verifyBid",
+		"The session we begin to verify bids.",
+	)
+
+	cfg.VerifyBidSession = uint32(verifyBid.GetEnabledSessionNum(cfg.Hardforks))
+
+	cfg.ElectionStopBlockSessionOffset = hardfork.NewInt64HardforkConfig(
+		"election.stopBlockSessionOffset",
+		"The Number of blocks that include transactions in one session.",
+	)
+	cfg.ProposerListName = hardfork.NewStringHardforkConfig(
+		"committee.proposerList",
+		"The name of proposer list we choose to use.",
+	)
+	cfg.MaxCodeSize = hardfork.NewInt64HardforkConfig(
+		"protocol.maxCodeSize",
+		"Maximum code size of a contract.",
+	)
+	cfg.GasTable = hardfork.NewStringHardforkConfig(
+		"protocol.gasTable",
+		"The gas table we choose to use.",
+	)
+	cfg.RewardScheme = hardfork.NewStringHardforkConfig(
+		"committee.rewardScheme",
+		"The scheme of reward dispatch hardfork",
+	)
+	cfg.VaultGasUnlimited = hardfork.NewBoolHardforkConfig(
+		"committee.vaultGasUnlimited",
+		"True if we don't limit the gas when vault calling other contract.",
+	)
+	cfg.EVMHardforkVersion = hardfork.NewStringHardforkConfig(
+		"evm.version",
+		"EVM hardfork version.",
+	)
+	cfg.IsConsensusInfoInHeader = hardfork.NewBoolHardforkConfig(
+		"consensus.infoInHeader",
+		"True if we store consensus info in Extra field of block header",
+	)
+	cfg.RNGVersion = hardfork.NewStringHardforkConfig(
+		"trustedRNG.version",
+		"RNG version",
+	)
+	cfg.BaseFee = hardfork.NewBigIntHardforkConfig(
+		"protocol.baseFee",
+		"protocol basefee",
+	)
+	cfg.TokenInflation = hardfork.NewBigIntHardforkConfig(
+		"protocol.inflation",
+		"protocol token inflation",
+	)
+	cfg.CommitteeRewardRatio = hardfork.NewInt64HardforkConfig(
+		"committee.rewardRatio",
+		"ratio of committee reward share",
+	)
+	cfg.TPCRevertDelegateCall = hardfork.NewBoolHardforkConfig(
+		"precompiled.revertDelegateCall",
+		"Revert deletegate call wehn calling precompiled contract",
+	)
+	cfg.K = hardfork.NewInt64HardforkConfig(
+		"consensus.k",
+		"Max unnotarized proposals",
+	)
+
+	precompile.Init()
+}
+
 func setMiner(ctx *cli.Context, cfg *params.MiningConfig) {
 	cfg.Enabled = ctx.IsSet(MiningEnabledFlag.Name)
 	cfg.EnabledPOS = !ctx.IsSet(ProposingDisableFlag.Name)
@@ -1502,6 +1631,9 @@ func SetEthConfig(ctx *cli.Context, nodeConfig *nodecfg.Config, cfg *ethconfig.C
 	setMiner(ctx, &cfg.Miner)
 	setWhitelist(ctx, cfg)
 	setBorConfig(ctx, cfg)
+	setPalaConfig(ctx, cfg, &cfg.Pala)
+
+	nodeConfig.Http.MaxGetLogsRange = ctx.Int64(RPCGetLogsMaxRangeFlag.Name)
 
 	cfg.Ethstats = ctx.String(EthStatsURLFlag.Name)
 	cfg.P2PEnabled = len(nodeConfig.P2P.SentryAddr) == 0

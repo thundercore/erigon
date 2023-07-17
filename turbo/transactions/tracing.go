@@ -15,6 +15,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv"
 	"github.com/ledgerwatch/erigon/consensus"
 	"github.com/ledgerwatch/erigon/consensus/bor/statefull"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -52,13 +53,15 @@ func ComputeTxEnv(ctx context.Context, engine consensus.EngineReader, block *typ
 		h, _ := headerReader.HeaderByNumber(ctx, dbtx, n)
 		return h
 	}
+	stateRootCal := MakeStateRootFromDBGetter(dbtx)
 	header := block.HeaderNoCopy()
-	BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil)
+	BlockContext := core.NewEVMBlockContext(header, core.GetHashFn(header, getHeader), engine, nil, stateRootCal)
+	sessionNum := blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, cfg.Pala)
 
 	// Recompute transactions up to the target index.
-	signer := types.MakeSigner(cfg, block.NumberU64())
+	signer := types.MakeSigner(cfg, block.NumberU64(), sessionNum)
 	if historyV3 {
-		rules := cfg.Rules(BlockContext.BlockNumber, BlockContext.Time)
+		rules := cfg.Rules(BlockContext.BlockNumber, BlockContext.Time, sessionNum)
 		txn := block.Transactions()[txIndex]
 		statedb.Prepare(txn.Hash(), block.Hash(), txIndex)
 		msg, _ := txn.AsMessage(*signer, block.BaseFee(), rules)
@@ -97,6 +100,7 @@ func ComputeTxEnv(ctx context.Context, engine consensus.EngineReader, block *typ
 		}
 
 		TxContext := core.NewEVMTxContext(msg)
+		TxContext.TxHash = txn.Hash()
 		if idx == txIndex {
 			return msg, BlockContext, TxContext, statedb, reader, nil
 		}

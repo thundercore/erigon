@@ -33,6 +33,7 @@ import (
 	"github.com/ledgerwatch/erigon/common"
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
@@ -130,9 +131,14 @@ func testCallTracer(tracerName string, dirPath string, t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse testcase input: %v", err)
 			}
+
+			session := uint32(0)
+			if test.Genesis.Config.Pala != nil {
+				session = blocksn.GetSessionFromDifficulty((*big.Int)(test.Context.Difficulty), big.NewInt(int64(test.Context.Number)), test.Genesis.Config.Pala)
+			}
 			// Configure a blockchain with the given prestate
 			var (
-				signer    = types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number))
+				signer    = types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number), 0)
 				origin, _ = signer.Sender(tx)
 				txContext = evmtypes.TxContext{
 					Origin:   origin,
@@ -148,7 +154,7 @@ func testCallTracer(tracerName string, dirPath string, t *testing.T) {
 					GasLimit:    uint64(test.Context.GasLimit),
 				}
 				_, dbTx    = memdb.NewTestTx(t)
-				rules      = test.Genesis.Config.Rules(context.BlockNumber, context.Time)
+				rules      = test.Genesis.Config.Rules(context.BlockNumber, context.Time, session)
 				statedb, _ = tests.MakePreState(rules, dbTx, test.Genesis.Alloc, uint64(test.Context.Number))
 			)
 			if test.Genesis.BaseFee != nil {
@@ -233,7 +239,7 @@ func benchTracer(tracerName string, test *callTracerTest, b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to parse testcase input: %v", err)
 	}
-	signer := types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number))
+	signer := types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number), 0)
 	rules := &chain.Rules{}
 	msg, err := tx.AsMessage(*signer, nil, rules)
 	if err != nil {
@@ -325,7 +331,7 @@ func TestZeroValueToNotExitCall(t *testing.T) {
 			Balance: big.NewInt(500000000000000),
 		},
 	}
-	rules := params.MainnetChainConfig.Rules(context.BlockNumber, context.Time)
+	rules := params.MainnetChainConfig.Rules(context.BlockNumber, context.Time, 0)
 	_, dbTx := memdb.NewTestTx(t)
 	statedb, _ := tests.MakePreState(rules, dbTx, alloc, context.BlockNumber)
 	// Create the tracer, the EVM environment and run it

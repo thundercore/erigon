@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"math/big"
 	"sync/atomic"
 
 	"github.com/holiman/uint256"
@@ -25,6 +26,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
 	"github.com/ledgerwatch/erigon/common/u256"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/crypto"
 	"github.com/ledgerwatch/erigon/params"
@@ -55,6 +57,16 @@ func (evm *EVM) precompile(addr libcommon.Address) (PrecompiledContract, bool) {
 		precompiles = PrecompiledContractsHomestead
 	}
 	p, ok := precompiles[addr]
+	return p, ok
+}
+
+func (evm *EVM) thunderPrecompile(addr libcommon.Address) (PrecompiledThunderContract, bool) {
+	if !evm.chainRules.IsThunder {
+		return nil, false
+	}
+
+	thunderPrecompiled := PrecompiledThunderContracts(evm)
+	p, ok := thunderPrecompiled[addr]
 	return p, ok
 }
 
@@ -101,13 +113,19 @@ type EVM struct {
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
 // only ever be used *once*.
 func NewEVM(blockCtx evmtypes.BlockContext, txCtx evmtypes.TxContext, state evmtypes.IntraBlockState, chainConfig *chain.Config, vmConfig Config) *EVM {
+	sessionNum := uint32(0)
+
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(blockCtx.Difficulty, big.NewInt(int64(blockCtx.BlockNumber)), chainConfig.Pala)
+	}
+
 	evm := &EVM{
 		context:         blockCtx,
 		txContext:       txCtx,
 		intraBlockState: state,
 		config:          vmConfig,
 		chainConfig:     chainConfig,
-		chainRules:      chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time),
+		chainRules:      chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Time, sessionNum),
 	}
 
 	evm.interpreter = NewEVMInterpreter(evm, vmConfig)
@@ -181,8 +199,9 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 		}
 	}
 	p, isPrecompile := evm.precompile(addr)
+	tp, isThunderPrecompile := evm.thunderPrecompile(addr)
 	var code []byte
-	if !isPrecompile {
+	if !isPrecompile && !isThunderPrecompile {
 		code = evm.intraBlockState.GetCode(addr)
 	}
 
@@ -190,7 +209,7 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 
 	if typ == CALL {
 		if !evm.intraBlockState.Exist(addr) {
-			if !isPrecompile && evm.chainRules.IsSpuriousDragon && value.IsZero() {
+			if !isPrecompile && !isThunderPrecompile && evm.chainRules.IsSpuriousDragon && value.IsZero() {
 				if evm.config.Debug {
 					v := value
 					if typ == STATICCALL {
@@ -242,33 +261,41 @@ func (evm *EVM) call(typ OpCode, caller ContractRef, addr libcommon.Address, inp
 	// It is allowed to call precompiles, even via delegatecall
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
-	} else if len(code) == 0 {
-		// If the account has no code, we can abort here
-		// The depth-check is already done, and precompiles handled above
-		ret, err = nil, nil // gas is unchanged
 	} else {
-		// At this point, we use a copy of address. If we don't, the go compiler will
-		// leak the 'contract' to the outer scope, and make allocation for 'contract'
-		// even if the actual execution ends on RunPrecompiled above.
-		addrCopy := addr
-		// Initialise a new contract and set the code that is to be used by the EVM.
-		// The contract is a scoped environment for this execution context only.
-		codeHash := evm.intraBlockState.GetCodeHash(addrCopy)
-		var contract *Contract
-		if typ == CALLCODE {
-			contract = NewContract(caller, AccountRef(caller.Address()), value, gas, evm.config.SkipAnalysis)
-		} else if typ == DELEGATECALL {
-			contract = NewContract(caller, AccountRef(caller.Address()), value, gas, evm.config.SkipAnalysis).AsDelegate()
+		if !isThunderPrecompile && len(code) == 0 {
+			ret, err = nil, nil
 		} else {
-			contract = NewContract(caller, AccountRef(addrCopy), value, gas, evm.config.SkipAnalysis)
+			// At this point, we use a copy of address. If we don't, the go compiler will
+			// leak the 'contract' to the outer scope, and make allocation for 'contract'
+			// even if the actual execution ends on RunPrecompiled above.
+			addrCopy := addr
+			// Initialise a new contract and set the code that is to be used by the EVM.
+			// The contract is a scoped environment for this execution context only.
+			codeHash := evm.intraBlockState.GetCodeHash(addrCopy)
+			var contract *Contract
+			if typ == CALLCODE {
+				contract = NewContract(caller, AccountRef(caller.Address()), value, gas, evm.config.SkipAnalysis)
+			} else if typ == DELEGATECALL {
+				contract = NewContract(caller, AccountRef(caller.Address()), value, gas, evm.config.SkipAnalysis).AsDelegate()
+			} else {
+				contract = NewContract(caller, AccountRef(addrCopy), value, gas, evm.config.SkipAnalysis)
+			}
+			contract.SetCallCode(&addrCopy, codeHash, code)
+			readOnly := false
+			if typ == STATICCALL {
+				readOnly = true
+			}
+			if isThunderPrecompile {
+				session := blocksn.GetSessionFromDifficulty(evm.context.Difficulty, big.NewInt(int64(evm.context.BlockNumber)), evm.chainConfig.Pala)
+				if evm.chainConfig.Pala.TPCRevertDelegateCall.GetValueHardforkAtSession(evm.chainConfig.Pala.Hardforks, int64(session)) {
+					ret, err = []byte{}, ErrDelegateCallUnsupported
+				}
+				ret, err = RunPrecompiledThunderContract(tp, input, contract, evm)
+			} else {
+				ret, err = run(evm, contract, input, readOnly)
+			}
+			gas = contract.Gas
 		}
-		contract.SetCallCode(&addrCopy, codeHash, code)
-		readOnly := false
-		if typ == STATICCALL {
-			readOnly = true
-		}
-		ret, err = run(evm, contract, input, readOnly)
-		gas = contract.Gas
 	}
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
@@ -401,8 +428,20 @@ func (evm *EVM) create(caller ContractRef, codeAndHash *codeAndHash, gas uint64,
 
 	ret, err = run(evm, contract, nil, false)
 
+	// ThunderCore customized code size
+	palaConfig := evm.chainConfig.Pala
+	if palaConfig != nil {
+		session := blocksn.GetSessionFromDifficulty(evm.Context().Difficulty, big.NewInt(int64(evm.Context().BlockNumber)), palaConfig)
+		maxCodeSize := palaConfig.MaxCodeSize.GetValueHardforkAtSession(palaConfig.Hardforks, int64(session))
+		maxCodeSizeExceeded := len(ret) > int(maxCodeSize)
+
+		if err == nil && evm.chainRules.IsSpuriousDragon && maxCodeSizeExceeded {
+			err = ErrMaxCodeSizeExceeded
+		}
+	}
+
 	// EIP-170: Contract code size limit
-	if err == nil && evm.chainRules.IsSpuriousDragon && len(ret) > params.MaxCodeSize {
+	if err == nil && evm.chainRules.IsSpuriousDragon && len(ret) > params.MaxCodeSize && palaConfig == nil {
 		// Gnosis Chain prior to Shanghai didn't have EIP-170 enabled,
 		// but EIP-3860 (part of Shanghai) requires EIP-170.
 		if !evm.chainRules.IsAura || evm.config.HasEip3860(evm.chainRules) {
@@ -491,6 +530,10 @@ func (evm *EVM) Context() evmtypes.BlockContext {
 // TxContext returns the EVM's TxContext
 func (evm *EVM) TxContext() evmtypes.TxContext {
 	return evm.txContext
+}
+
+func (evm *EVM) IncrementRNGCounter() {
+	evm.txContext.RNGCounter++
 }
 
 // IntraBlockState returns the EVM's IntraBlockState

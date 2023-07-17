@@ -24,6 +24,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common"
 
 	"github.com/ledgerwatch/erigon/common/math"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/params"
 )
@@ -53,8 +54,17 @@ func VerifyEip1559Header(config *chain.Config, parent, header *types.Header) err
 	return nil
 }
 
+func PalaBaseFee(config *chain.Config, parent *types.Header) *big.Int {
+	session := blocksn.GetSessionFromDifficulty(parent.Difficulty, big.NewInt(int64(parent.Number.Uint64())), config.Pala)
+	return config.Pala.BaseFee.GetValueHardforkAtSession(config.Pala.Hardforks, int64(session))
+}
+
 // CalcBaseFee calculates the basefee of the header.
 func CalcBaseFee(config *chain.Config, parent *types.Header) *big.Int {
+	if config.Pala != nil {
+		return PalaBaseFee(config, parent)
+	}
+
 	// If the current block is the first EIP-1559 block, return the InitialBaseFee.
 	if !config.IsLondon(parent.Number.Uint64()) {
 		return new(big.Int).SetUint64(params.InitialBaseFee)

@@ -24,6 +24,7 @@ import (
 
 	"github.com/holiman/uint256"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
+	ttCommon "github.com/ledgerwatch/erigon/consensus/pala/thunder/common"
 
 	"github.com/ledgerwatch/erigon/core/types/accounts"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -93,6 +94,12 @@ type stateObject struct {
 
 // empty returns whether the account is considered empty.
 func (so *stateObject) empty() bool {
+	if so.address == ttCommon.DefaultCoinbaseAddress ||
+		so.address == ttCommon.VaultTPCAddress ||
+		so.address == ttCommon.CommElectionTPCAddress {
+		return false
+	}
+
 	return so.data.Nonce == 0 && so.data.Balance.IsZero() && bytes.Equal(so.data.CodeHash[:], emptyCodeHash)
 }
 
@@ -106,6 +113,13 @@ func newObject(db *IntraBlockState, address libcommon.Address, data, original *a
 		dirtyStorage:       make(Storage),
 	}
 	so.data.Copy(data)
+
+	if address == ttCommon.DefaultCoinbaseAddress || address == ttCommon.VaultTPCAddress || address == ttCommon.CommElectionTPCAddress || address == ttCommon.RandomTPCAddress {
+		if so.data.Incarnation == 0 {
+			so.data.Incarnation = 1
+		}
+	}
+
 	if !so.data.Initialised {
 		so.data.Balance.SetUint64(0)
 		so.data.Initialised = true

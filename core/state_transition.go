@@ -18,6 +18,7 @@ package core
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/holiman/uint256"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
@@ -28,6 +29,7 @@ import (
 	cmath "github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/common/u256"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
@@ -75,6 +77,7 @@ type StateTransition struct {
 
 	isParlia bool
 	isBor    bool
+	isPala   bool
 }
 
 // Message represents a message sent to a contract.
@@ -153,6 +156,7 @@ func IntrinsicGas(data []byte, accessList types2.AccessList, isContractCreation 
 func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTransition {
 	isParlia := evm.ChainConfig().Parlia != nil
 	isBor := evm.ChainConfig().Bor != nil
+	isPala := evm.ChainConfig().Pala != nil
 	return &StateTransition{
 		gp:        gp,
 		evm:       evm,
@@ -169,6 +173,7 @@ func NewStateTransition(evm vm.VMInterface, msg Message, gp *GasPool) *StateTran
 
 		isParlia: isParlia,
 		isBor:    isBor,
+		isPala:   isPala,
 	}
 }
 
@@ -420,7 +425,16 @@ func (st *StateTransition) TransitionDb(refunds bool, gasBailout bool) (*Executi
 	if st.isParlia {
 		st.state.AddBalance(consensus.SystemAddress, amount)
 	} else {
-		st.state.AddBalance(st.evm.Context().Coinbase, amount)
+		if st.isPala {
+			pala := st.evm.ChainConfig().Pala
+			session := blocksn.GetSessionFromDifficulty(st.evm.Context().Difficulty, big.NewInt(int64(st.evm.Context().BlockNumber)), pala)
+
+			if pala.RewardScheme.GetValueHardforkAtSession(pala.Hardforks, int64(session)) != "inflation" {
+				st.state.AddBalance(st.evm.Context().Coinbase, amount)
+			}
+		} else {
+			st.state.AddBalance(st.evm.Context().Coinbase, amount)
+		}
 	}
 	if !msg.IsFree() && rules.IsLondon && rules.IsEip1559FeeCollector {
 		burntContractAddress := *st.evm.ChainConfig().Eip1559FeeCollector

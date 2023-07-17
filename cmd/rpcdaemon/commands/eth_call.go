@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -401,8 +402,13 @@ func (api *APIImpl) CreateAccessList(ctx context.Context, args ethapi2.CallArgs,
 		args.From = &libcommon.Address{}
 	}
 
+	sessionNum := uint32(0)
+	if chainConfig.Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, chainConfig.Pala)
+	}
+
 	// Retrieve the precompiles since they don't need to be added to the access list
-	precompiles := vm.ActivePrecompiles(chainConfig.Rules(blockNumber, header.Time))
+	precompiles := vm.ActivePrecompiles(chainConfig.Rules(blockNumber, header.Time, sessionNum))
 
 	// Create an initial tracer
 	prevTracer := logger.NewAccessListTracer(nil, *args.From, to, precompiles)

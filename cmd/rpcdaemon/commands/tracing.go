@@ -11,6 +11,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/log/v3"
 
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
@@ -95,9 +96,9 @@ func (api *PrivateDebugAPIImpl) traceBlock(ctx context.Context, blockNrOrHash rp
 		stream.WriteNil()
 		return err
 	}
-
-	signer := types.MakeSigner(chainConfig, block.NumberU64())
-	rules := chainConfig.Rules(block.NumberU64(), block.Time())
+	sessionNum := blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	signer := types.MakeSigner(chainConfig, block.NumberU64(), sessionNum)
+	rules := chainConfig.Rules(block.NumberU64(), block.Time(), sessionNum)
 	stream.WriteArrayStart()
 
 	borTx, _, _, _ := rawdb.ReadBorTransactionForBlock(tx, block)
@@ -428,8 +429,9 @@ func (api *PrivateDebugAPIImpl) TraceCallMany(ctx context.Context, bundles []Bun
 
 	// Get a new instance of the EVM
 	evm = vm.NewEVM(blockCtx, txCtx, st, chainConfig, vm.Config{Debug: false})
-	signer := types.MakeSigner(chainConfig, blockNum)
-	rules := chainConfig.Rules(blockNum, blockCtx.Time)
+	sessionNum := blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	signer := types.MakeSigner(chainConfig, blockNum, sessionNum)
+	rules := chainConfig.Rules(blockNum, blockCtx.Time, sessionNum)
 
 	// Setup the gas pool (also for unmetered requests)
 	// and apply the message.

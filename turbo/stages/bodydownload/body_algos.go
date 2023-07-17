@@ -194,6 +194,7 @@ func (bd *BodyDownload) checkPrefetchedBlock(hash libcommon.Hash, tx kv.RwTx, bl
 	// make sure we have the body in the bucket for later use
 	bd.addBodyToCache(blockNum, body)
 
+	// TT: Pala should use different condition to propagate blocks
 	// Calculate the TD of the block (it's not imported yet, so block.Td is not valid)
 	if header.Difficulty.Sign() != 0 { // don't propagate proof-of-stake blocks
 		if parent, err := rawdb.ReadTd(tx, header.ParentHash, header.Number.Uint64()-1); err != nil {
@@ -440,4 +441,8 @@ func (bd *BodyDownload) ClearBodyCache() {
 
 func (bd *BodyDownload) BodyCacheSize() int {
 	return bd.bodyCacheSize
+}
+
+func (bd *BodyDownload) FreeHeader(blockNum uint64) {
+	delete(bd.deliveriesH, blockNum)
 }

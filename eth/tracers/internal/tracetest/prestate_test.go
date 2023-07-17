@@ -30,6 +30,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/kv/memdb"
 
 	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/core/vm"
@@ -95,9 +96,13 @@ func testPrestateDiffTracer(tracerName string, dirPath string, t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to parse testcase input: %v", err)
 			}
+			session := uint32(0)
+			if test.Genesis.Config.Pala != nil {
+				session = blocksn.GetSessionFromDifficulty((*big.Int)(test.Context.Difficulty), big.NewInt(int64(test.Context.Number)), test.Genesis.Config.Pala)
+			}
 			// Configure a blockchain with the given prestate
 			var (
-				signer    = types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number))
+				signer    = types.MakeSigner(test.Genesis.Config, uint64(test.Context.Number), 0)
 				origin, _ = signer.Sender(tx)
 				txContext = evmtypes.TxContext{
 					Origin:   origin,
@@ -113,7 +118,7 @@ func testPrestateDiffTracer(tracerName string, dirPath string, t *testing.T) {
 					GasLimit:    uint64(test.Context.GasLimit),
 				}
 				_, dbTx    = memdb.NewTestTx(t)
-				rules      = test.Genesis.Config.Rules(context.BlockNumber, context.Time)
+				rules      = test.Genesis.Config.Rules(context.BlockNumber, context.Time, session)
 				statedb, _ = tests.MakePreState(rules, dbTx, test.Genesis.Alloc, context.BlockNumber)
 			)
 			if test.Genesis.BaseFee != nil {

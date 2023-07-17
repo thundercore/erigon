@@ -254,6 +254,7 @@ func BodiesForward(
 				}
 			}
 			cfg.bd.AdvanceLow()
+			cfg.bd.FreeHeader(blockHeight)
 		}
 
 		d5 += time.Since(start)

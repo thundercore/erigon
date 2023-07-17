@@ -763,6 +763,34 @@ func DefaultChiadoGenesisBlock() *Genesis {
 	}
 }
 
+func DefaultThunderDevnetGenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.ThunderDevnetChainConfig,
+		Nonce:      0,
+		Difficulty: big.NewInt(1),
+		GasLimit:   0x5f5e100,
+		Timestamp:  0,
+		Mixhash:    libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		Coinbase:   libcommon.HexToAddress("0x0000000000000000000000000000000000000000"),
+		ParentHash: libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		Alloc:      readPrealloc("allocs/thunder_devnet.json"),
+	}
+}
+
+func DefaultThunderTestnetGenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.ThunderTestnetChainConfig,
+		Nonce:      0,
+		Difficulty: big.NewInt(1),
+		GasLimit:   0x5f5e100,
+		Timestamp:  0,
+		Mixhash:    libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		Coinbase:   libcommon.HexToAddress("0x0000000000000000000000000000000000000000"),
+		ParentHash: libcommon.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		Alloc:      readPrealloc("allocs/thunder_testnet.json"),
+	}
+}
+
 // Pre-calculated version of:
 //
 //	DevnetSignPrivateKey = crypto.HexToECDSA(sha256.Sum256([]byte("erigon devnet key")))
@@ -829,6 +857,10 @@ func DefaultGenesisBlockByChainName(chain string) *Genesis {
 		return DefaultGnosisGenesisBlock()
 	case networkname.ChiadoChainName:
 		return DefaultChiadoGenesisBlock()
+	case networkname.ThunderDevnetChainName:
+		return DefaultThunderDevnetGenesisBlock()
+	case networkname.ThunderTestnetChainName:
+		return DefaultThunderTestnetGenesisBlock()
 	default:
 		return nil
 	}

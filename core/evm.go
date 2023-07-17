@@ -31,7 +31,7 @@ import (
 )
 
 // NewEVMBlockContext creates a new context for use in the EVM.
-func NewEVMBlockContext(header *types.Header, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address) evmtypes.BlockContext {
+func NewEVMBlockContext(header *types.Header, blockHashFunc func(n uint64) libcommon.Hash, engine consensus.EngineReader, author *libcommon.Address, stateRootCalFunc func(evmtypes.TxContext) (*libcommon.Hash, error)) evmtypes.BlockContext {
 	// If we don't have an explicit author (i.e. not mining), extract from the header
 	var beneficiary libcommon.Address
 	if author == nil {
@@ -48,7 +48,7 @@ func NewEVMBlockContext(header *types.Header, blockHashFunc func(n uint64) libco
 	}
 
 	var prevRandDao *libcommon.Hash
-	if header.Difficulty.Cmp(serenity.SerenityDifficulty) == 0 {
+	if header.Difficulty.Cmp(serenity.SerenityDifficulty) == 0 || engine.Type() == chain.PalaConsensus {
 		// EIP-4399. We use SerenityDifficulty (i.e. 0) as a telltale of Proof-of-Stake blocks.
 		prevRandDao = &header.MixDigest
 	}
@@ -61,16 +61,17 @@ func NewEVMBlockContext(header *types.Header, blockHashFunc func(n uint64) libco
 	}
 
 	return evmtypes.BlockContext{
-		CanTransfer: CanTransfer,
-		Transfer:    transferFunc,
-		GetHash:     blockHashFunc,
-		Coinbase:    beneficiary,
-		BlockNumber: header.Number.Uint64(),
-		Time:        header.Time,
-		Difficulty:  new(big.Int).Set(header.Difficulty),
-		BaseFee:     &baseFee,
-		GasLimit:    header.GasLimit,
-		PrevRanDao:  prevRandDao,
+		CanTransfer:  CanTransfer,
+		Transfer:     transferFunc,
+		GetHash:      blockHashFunc,
+		StateRootCal: stateRootCalFunc,
+		Coinbase:     beneficiary,
+		BlockNumber:  header.Number.Uint64(),
+		Time:         header.Time,
+		Difficulty:   new(big.Int).Set(header.Difficulty),
+		BaseFee:      &baseFee,
+		GasLimit:     header.GasLimit,
+		PrevRanDao:   prevRandDao,
 	}
 }
 

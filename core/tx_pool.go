@@ -105,6 +105,7 @@ var DefaultTxPool2Config = func(pool1Cfg TxPoolConfig) txpool.Config {
 	cfg.LogEvery = 1 * time.Minute
 	cfg.CommitEvery = 5 * time.Minute
 	cfg.TracedSenders = pool1Cfg.TracedSenders
+	cfg.LifeTime = pool1Cfg.Lifetime
 
 	return cfg
 }

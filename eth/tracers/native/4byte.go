@@ -18,6 +18,7 @@ package native
 
 import (
 	"encoding/json"
+	"math/big"
 	"strconv"
 	"sync/atomic"
 
@@ -25,6 +26,7 @@ import (
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 
 	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/eth/tracers"
 )
@@ -83,7 +85,12 @@ func (t *fourByteTracer) store(id []byte, size int) {
 // CaptureStart implements the EVMLogger interface to initialize the tracing operation.
 func (t *fourByteTracer) CaptureStart(env vm.VMInterface, from libcommon.Address, to libcommon.Address, precompile, create bool, input []byte, gas uint64, value *uint256.Int, code []byte) {
 	// Update list of precompiles based on current block
-	rules := env.ChainConfig().Rules(env.Context().BlockNumber, env.Context().Time)
+	sessionNum := uint32(0)
+	if env.ChainConfig().Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(env.Context().Difficulty, big.NewInt(int64(env.Context().BlockNumber)), env.ChainConfig().Pala)
+	}
+
+	rules := env.ChainConfig().Rules(env.Context().BlockNumber, env.Context().Time, sessionNum)
 	t.activePrecompiles = vm.ActivePrecompiles(rules)
 
 	// Save the outer calldata also

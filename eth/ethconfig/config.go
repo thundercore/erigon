@@ -208,6 +208,7 @@ type Config struct {
 	Aura   chain.AuRaConfig
 	Parlia chain.ParliaConfig
 	Bor    chain.BorConfig
+	Pala   chain.PalaConfig
 
 	// Transaction pool options
 	DeprecatedTxPool core.TxPoolConfig
@@ -267,14 +268,16 @@ type Sync struct {
 
 // Chains where snapshots are enabled by default
 var ChainsWithSnapshots = map[string]struct{}{
-	networkname.MainnetChainName:    {},
-	networkname.SepoliaChainName:    {},
-	networkname.BSCChainName:        {},
-	networkname.GoerliChainName:     {},
-	networkname.MumbaiChainName:     {},
-	networkname.BorMainnetChainName: {},
-	networkname.GnosisChainName:     {},
-	networkname.ChiadoChainName:     {},
+	networkname.MainnetChainName:        {},
+	networkname.SepoliaChainName:        {},
+	networkname.BSCChainName:            {},
+	networkname.GoerliChainName:         {},
+	networkname.MumbaiChainName:         {},
+	networkname.BorMainnetChainName:     {},
+	networkname.GnosisChainName:         {},
+	networkname.ChiadoChainName:         {},
+	networkname.ThunderDevnetChainName:  {},
+	networkname.ThunderTestnetChainName: {},
 }
 
 func UseSnapshotsByChainName(chain string) bool {

@@ -56,6 +56,7 @@ var (
 	BeaconState                 SyncStage = "BeaconState"                 // Beacon blocks are sent to the state transition function
 	BeaconIndexes               SyncStage = "BeaconIndexes"               // Fills up Beacon indexes
 
+	Notarization SyncStage = "Notarization" // TT notarization data
 )
 
 var AllStages = []SyncStage{
@@ -63,6 +64,7 @@ var AllStages = []SyncStage{
 	Headers,
 	BlockHashes,
 	Bodies,
+	Notarization,
 	Senders,
 	Execution,
 	Translation,

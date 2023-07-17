@@ -160,4 +160,10 @@ var DefaultFlags = []cli.Flag{
 	&utils.LightClientDiscoveryTCPPortFlag,
 	&utils.SentinelAddrFlag,
 	&utils.SentinelPortFlag,
+
+	// ThunderCore stuff
+	&utils.TTHardforkConfigPathFlag,
+	&utils.TTCommonConfigPathFlag,
+	&utils.TxPoolEvictDurationFlag,
+	&utils.RPCGetLogsMaxRangeFlag,
 }

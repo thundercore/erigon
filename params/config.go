@@ -51,19 +51,21 @@ func readChainSpec(filename string) *chain.Config {
 
 // Genesis hashes to enforce below configs on.
 var (
-	MainnetGenesisHash    = libcommon.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
-	SepoliaGenesisHash    = libcommon.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
-	RinkebyGenesisHash    = libcommon.HexToHash("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")
-	GoerliGenesisHash     = libcommon.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
-	SokolGenesisHash      = libcommon.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
-	BSCGenesisHash        = libcommon.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
-	ChapelGenesisHash     = libcommon.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
-	RialtoGenesisHash     = libcommon.HexToHash("0xee835a629f9cf5510b48b6ba41d69e0ff7d6ef10f977166ef939db41f59f5501")
-	MumbaiGenesisHash     = libcommon.HexToHash("0x7b66506a9ebdbf30d32b43c5f15a3b1216269a1ec3a75aa3182b86176a2b1ca7")
-	BorMainnetGenesisHash = libcommon.HexToHash("0xa9c28ce2141b56c474f1dc504bee9b01eb1bd7d1a507580d5519d4437a97de1b")
-	BorDevnetGenesisHash  = libcommon.HexToHash("0x5a06b25b0c6530708ea0b98a3409290e39dce6be7f558493aeb6e4b99a172a87")
-	GnosisGenesisHash     = libcommon.HexToHash("0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")
-	ChiadoGenesisHash     = libcommon.HexToHash("0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a")
+	MainnetGenesisHash        = libcommon.HexToHash("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")
+	SepoliaGenesisHash        = libcommon.HexToHash("0x25a5cc106eea7138acab33231d7160d69cb777ee0c2c553fcddf5138993e6dd9")
+	RinkebyGenesisHash        = libcommon.HexToHash("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")
+	GoerliGenesisHash         = libcommon.HexToHash("0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")
+	SokolGenesisHash          = libcommon.HexToHash("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")
+	BSCGenesisHash            = libcommon.HexToHash("0x0d21840abff46b96c84b2ac9e10e4f5cdaeb5693cb665db62a2f3b02d2d57b5b")
+	ChapelGenesisHash         = libcommon.HexToHash("0x6d3c66c5357ec91d5c43af47e234a939b22557cbb552dc45bebbceeed90fbe34")
+	RialtoGenesisHash         = libcommon.HexToHash("0xee835a629f9cf5510b48b6ba41d69e0ff7d6ef10f977166ef939db41f59f5501")
+	MumbaiGenesisHash         = libcommon.HexToHash("0x7b66506a9ebdbf30d32b43c5f15a3b1216269a1ec3a75aa3182b86176a2b1ca7")
+	BorMainnetGenesisHash     = libcommon.HexToHash("0xa9c28ce2141b56c474f1dc504bee9b01eb1bd7d1a507580d5519d4437a97de1b")
+	BorDevnetGenesisHash      = libcommon.HexToHash("0x5a06b25b0c6530708ea0b98a3409290e39dce6be7f558493aeb6e4b99a172a87")
+	GnosisGenesisHash         = libcommon.HexToHash("0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")
+	ChiadoGenesisHash         = libcommon.HexToHash("0xada44fd8d2ecab8b08f256af07ad3e777f17fb434f8f8e678b312f576212ba9a")
+	ThunderDevnetGenesisHash  = libcommon.HexToHash("0xb9c69405fcc958dfbc470739ca29f9a2d18e0113a1b65926c6a711f177da3e6e")
+	ThunderTestnetGenesisHash = libcommon.HexToHash("0xaae9c18dafff430713a7db83c07f5f5f4e206c42b603d15324a9772eb6f29dbb")
 )
 
 var (
@@ -152,6 +154,10 @@ var (
 
 	CliqueSnapshot = NewSnapshotConfig(10, 1024, 16384, true, "")
 
+	ThunderDevnetChainConfig = readChainSpec("chainspecs/thunder-devnet.json")
+
+	ThunderTestnetChainConfig = readChainSpec("chainspecs/thunder-testnet.json")
+
 	TestChainConfig = &chain.Config{
 		ChainID:               big.NewInt(1337),
 		Consensus:             chain.EtHashConsensus,
@@ -185,7 +191,7 @@ var (
 		Aura:                  &chain.AuRaConfig{},
 	}
 
-	TestRules = TestChainConfig.Rules(0, 0)
+	TestRules = TestChainConfig.Rules(0, 0, 0)
 )
 
 type ConsensusSnapshotConfig struct {
@@ -240,6 +246,10 @@ func ChainConfigByChainName(chain string) *chain.Config {
 		return GnosisChainConfig
 	case networkname.ChiadoChainName:
 		return ChiadoChainConfig
+	case networkname.ThunderDevnetChainName:
+		return ThunderDevnetChainConfig
+	case networkname.ThunderTestnetChainName:
+		return ThunderTestnetChainConfig
 	default:
 		return nil
 	}
@@ -273,6 +283,10 @@ func GenesisHashByChainName(chain string) *libcommon.Hash {
 		return &GnosisGenesisHash
 	case networkname.ChiadoChainName:
 		return &ChiadoGenesisHash
+	case networkname.ThunderDevnetChainName:
+		return &ThunderDevnetGenesisHash
+	case networkname.ThunderTestnetChainName:
+		return &ThunderTestnetGenesisHash
 	default:
 		return nil
 	}
@@ -306,6 +320,8 @@ func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
 		return GnosisChainConfig
 	case genesisHash == ChiadoGenesisHash:
 		return ChiadoChainConfig
+	case genesisHash == ThunderDevnetGenesisHash:
+		return ThunderDevnetChainConfig
 	default:
 		return nil
 	}
@@ -313,6 +329,10 @@ func ChainConfigByGenesisHash(genesisHash libcommon.Hash) *chain.Config {
 
 func NetworkIDByChainName(chain string) uint64 {
 	switch chain {
+	case networkname.ThunderDevnetChainName:
+		return 19
+	case networkname.ThunderTestnetChainName:
+		return 18
 	case networkname.RialtoChainName:
 		return 97
 	case networkname.DevChainName:

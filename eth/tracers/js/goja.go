@@ -28,6 +28,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/common/hexutility"
 
 	"github.com/ledgerwatch/erigon/common"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/core/vm/evmtypes"
 	"github.com/ledgerwatch/erigon/core/vm/stack"
@@ -246,7 +247,12 @@ func (t *jsTracer) CaptureStart(env vm.VMInterface, from libcommon.Address, to l
 	t.ctx["value"] = valueBig
 	t.ctx["block"] = t.vm.ToValue(env.Context().BlockNumber)
 	// Update list of precompiles based on current block
-	rules := env.ChainConfig().Rules(env.Context().BlockNumber, env.Context().Time)
+	sessionNum := uint32(0)
+	if env.ChainConfig().Pala != nil {
+		sessionNum = blocksn.GetSessionFromDifficulty(env.Context().Difficulty, big.NewInt(int64(env.Context().BlockNumber)), env.ChainConfig().Pala)
+	}
+
+	rules := env.ChainConfig().Rules(env.Context().BlockNumber, env.Context().Time, sessionNum)
 	t.activePrecompiles = vm.ActivePrecompiles(rules)
 }
 

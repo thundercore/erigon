@@ -21,6 +21,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/consensus"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/state"
@@ -61,10 +62,11 @@ func (api *BaseAPI) getReceipts(ctx context.Context, tx kv.Tx, chainConfig *chai
 		}
 		return h
 	}
+	stateRootCal := transactions.MakeStateRootFromDBGetter(tx)
 	for i, txn := range block.Transactions() {
 		ibs.Prepare(txn.Hash(), block.Hash(), i)
 		header := block.Header()
-		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, vm.Config{})
+		receipt, _, err := core.ApplyTransaction(chainConfig, core.GetHashFn(header, getHeader), engine, nil, gp, ibs, noopWriter, header, txn, usedGas, vm.Config{}, stateRootCal)
 		if err != nil {
 			return nil, err
 		}
@@ -123,6 +125,11 @@ func (api *APIImpl) GetLogs(ctx context.Context, crit filters.FilterCriteria) (t
 	if end < begin {
 		return nil, fmt.Errorf("end (%d) < begin (%d)", end, begin)
 	}
+
+	if api.maxLogGetRange > 0 && int64(end-begin) > api.maxLogGetRange {
+		return nil, fmt.Errorf("exceed maximum block range: %v", api.maxLogGetRange)
+	}
+
 	if end > roaring.MaxUint32 {
 		latest, err := rpchelper.GetLatestBlockNumber(tx)
 		if err != nil {
@@ -503,8 +510,9 @@ func (e *intraBlockExec) changeBlock(header *types.Header) {
 	e.blockCtx = &blockCtx
 	e.blockHash = header.Hash()
 	e.header = header
-	e.rules = e.chainConfig.Rules(e.blockNum, header.Time)
-	e.signer = types.MakeSigner(e.chainConfig, e.blockNum)
+	sessionNum := blocksn.GetSessionFromDifficulty(header.Difficulty, header.Number, e.chainConfig.Pala)
+	e.rules = e.chainConfig.Rules(e.blockNum, header.Time, sessionNum)
+	e.signer = types.MakeSigner(e.chainConfig, e.blockNum, sessionNum)
 	e.vmConfig.SkipAnalysis = core.SkipAnalysis(e.chainConfig, e.blockNum)
 }
 

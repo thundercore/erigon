@@ -72,6 +72,8 @@ const (
 	NewPooledTransactionHashesMsg = 0x08
 	GetPooledTransactionsMsg      = 0x09
 	PooledTransactionsMsg         = 0x0a
+
+	// tt protocol
 )
 
 var ToProto = map[uint]map[uint64]proto_sentry.MessageId{

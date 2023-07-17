@@ -21,6 +21,8 @@ type BlockContext struct {
 	// GetHash returns the hash corresponding to n
 	GetHash GetHashFunc
 
+	StateRootCal StateRootCalFunc
+
 	// Block information
 	Coinbase    libcommon.Address // Provides information for COINBASE
 	GasLimit    uint64            // Provides information for GASLIMIT
@@ -36,9 +38,10 @@ type BlockContext struct {
 // All fields can change between transactions.
 type TxContext struct {
 	// Message information
-	TxHash   libcommon.Hash
-	Origin   libcommon.Address // Provides information for ORIGIN
-	GasPrice *uint256.Int      // Provides information for GASPRICE
+	TxHash     libcommon.Hash
+	Origin     libcommon.Address // Provides information for ORIGIN
+	GasPrice   *uint256.Int      // Provides information for GASPRICE
+	RNGCounter uint64            // RNG counter for state root calculation
 }
 
 type (
@@ -49,6 +52,8 @@ type (
 	// GetHashFunc returns the nth block hash in the blockchain
 	// and is used by the BLOCKHASH EVM op code.
 	GetHashFunc func(uint64) libcommon.Hash
+
+	StateRootCalFunc func(TxContext) (*libcommon.Hash, error)
 )
 
 // IntraBlockState is an EVM database for full state querying.

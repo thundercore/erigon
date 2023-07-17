@@ -42,6 +42,7 @@ import (
 	"github.com/ledgerwatch/erigon/common/hexutil"
 	"github.com/ledgerwatch/erigon/common/math"
 	"github.com/ledgerwatch/erigon/consensus/ethash"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/types"
@@ -219,7 +220,7 @@ func Main(ctx *cli.Context) error {
 		txsWithKeys = inputData.Txs
 	}
 	// We may have to sign the transactions.
-	signer := types.MakeSigner(chainConfig, prestate.Env.Number)
+	signer := types.MakeSigner(chainConfig, prestate.Env.Number, 0)
 
 	if txs, err = signUnsignedTransactions(txsWithKeys, *signer); err != nil {
 		return NewError(ErrorJson, fmt.Errorf("failed signing transactions: %v", err))
@@ -288,11 +289,14 @@ func Main(ctx *cli.Context) error {
 		return err
 	}
 	defer tx.Rollback()
-
-	reader, writer := MakePreState(chainConfig.Rules(0, 0), tx, prestate.Pre)
+	session := uint32(0)
+	if chainConfig.Pala != nil {
+		session = blocksn.GetSessionFromDifficulty(block.Difficulty(), block.Number(), chainConfig.Pala)
+	}
+	reader, writer := MakePreState(chainConfig.Rules(0, 0, session), tx, prestate.Pre)
 	engine := ethash.NewFaker()
 
-	result, err := core.ExecuteBlockEphemerally(chainConfig, &vmConfig, getHash, engine, block, reader, writer, nil, nil, getTracer)
+	result, err := core.ExecuteBlockEphemerally(chainConfig, &vmConfig, getHash, engine, block, reader, writer, nil, nil, getTracer, nil, nil)
 
 	if hashError != nil {
 		return NewError(ErrorMissingBlockhash, fmt.Errorf("blockhash error: %v", err))

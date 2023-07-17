@@ -21,6 +21,7 @@ import (
 
 	"github.com/ledgerwatch/erigon/common/dbutils"
 	"github.com/ledgerwatch/erigon/common/debug"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/rawdb"
 	"github.com/ledgerwatch/erigon/core/types"
 	"github.com/ledgerwatch/erigon/eth/stagedsync/stages"
@@ -237,6 +238,8 @@ Loop:
 			continue
 		}
 
+		header := rawdb.ReadHeaderByNumber(tx, blockNumber)
+
 		select {
 		case recoveryErr := <-errCh:
 			if recoveryErr.err != nil {
@@ -246,7 +249,7 @@ Loop:
 				}
 				break Loop
 			}
-		case jobs <- &senderRecoveryJob{body: body, key: k, blockNumber: blockNumber, blockHash: blockHash, index: int(blockNumber - s.BlockNumber - 1)}:
+		case jobs <- &senderRecoveryJob{body: body, header: header, key: k, blockNumber: blockNumber, blockHash: blockHash, index: int(blockNumber - s.BlockNumber - 1)}:
 		}
 	}
 
@@ -303,6 +306,7 @@ type senderRecoveryError struct {
 
 type senderRecoveryJob struct {
 	body        *types.Body
+	header      *types.Header
 	key         []byte
 	senders     []byte
 	blockHash   libcommon.Hash
@@ -330,7 +334,8 @@ func recoverSenders(ctx context.Context, logPrefix string, cryptoContext *secp25
 		}
 
 		body := job.body
-		signer := types.MakeSigner(config, job.blockNumber)
+		session := blocksn.GetSessionFromDifficulty(job.header.Difficulty, job.header.Number, config.Pala)
+		signer := types.MakeSigner(config, job.blockNumber, session)
 		job.senders = make([]byte, len(body.Transactions)*length.Addr)
 		for i, tx := range body.Transactions {
 			from, err := signer.SenderWithContext(cryptoContext, tx)

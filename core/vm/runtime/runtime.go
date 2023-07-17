@@ -25,6 +25,7 @@ import (
 	"github.com/ledgerwatch/erigon-lib/chain"
 	libcommon "github.com/ledgerwatch/erigon-lib/common"
 	"github.com/ledgerwatch/erigon-lib/kv/memdb"
+	"github.com/ledgerwatch/erigon/consensus/pala/thunder/blocksn"
 	"github.com/ledgerwatch/erigon/core/state"
 	"github.com/ledgerwatch/erigon/core/vm"
 	"github.com/ledgerwatch/erigon/crypto"
@@ -127,7 +128,12 @@ func Execute(code, input []byte, cfg *Config, bn uint64) ([]byte, *state.IntraBl
 		vmenv   = NewEnv(cfg)
 		sender  = vm.AccountRef(cfg.Origin)
 	)
-	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time); rules.IsBerlin {
+
+	session := uint32(0)
+	if cfg.ChainConfig.Pala != nil {
+		session = blocksn.GetSessionFromDifficulty(vmenv.Context().Difficulty, big.NewInt(int64(vmenv.Context().BlockNumber)), cfg.ChainConfig.Pala)
+	}
+	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time, session); rules.IsBerlin {
 		cfg.State.PrepareAccessList(cfg.Origin, &address, vm.ActivePrecompiles(rules), nil)
 	}
 	cfg.State.CreateAccount(address, true)
@@ -164,7 +170,11 @@ func Create(input []byte, cfg *Config, blockNr uint64) ([]byte, libcommon.Addres
 		vmenv  = NewEnv(cfg)
 		sender = vm.AccountRef(cfg.Origin)
 	)
-	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time); rules.IsBerlin {
+	session := uint32(0)
+	if cfg.ChainConfig.Pala != nil {
+		session = blocksn.GetSessionFromDifficulty(vmenv.Context().Difficulty, big.NewInt(int64(vmenv.Context().BlockNumber)), cfg.ChainConfig.Pala)
+	}
+	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time, session); rules.IsBerlin {
 		cfg.State.PrepareAccessList(cfg.Origin, nil, vm.ActivePrecompiles(rules), nil)
 	}
 
@@ -190,7 +200,11 @@ func Call(address libcommon.Address, input []byte, cfg *Config) ([]byte, uint64,
 
 	sender := cfg.State.GetOrNewStateObject(cfg.Origin)
 	statedb := cfg.State
-	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time); rules.IsBerlin {
+	session := uint32(0)
+	if cfg.ChainConfig.Pala != nil {
+		session = blocksn.GetSessionFromDifficulty(vmenv.Context().Difficulty, big.NewInt(int64(vmenv.Context().BlockNumber)), cfg.ChainConfig.Pala)
+	}
+	if rules := cfg.ChainConfig.Rules(vmenv.Context().BlockNumber, vmenv.Context().Time, session); rules.IsBerlin {
 		statedb.PrepareAccessList(cfg.Origin, &address, vm.ActivePrecompiles(rules), nil)
 	}
 

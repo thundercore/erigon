@@ -165,6 +165,16 @@ const (
 	// up to half the consumed gas could be refunded. Redefined as 1/5th in EIP-3529
 	RefundQuotient        uint64 = 2
 	RefundQuotientEIP3529 uint64 = 5
+
+	// ThunderCore stuff
+	SloadGas           uint64 = 50
+	Pala2P5ExtcodeSize uint64 = 14000
+	Pala2P5ExtcodeCopy uint64 = 14000
+	Pala2P5ExtcodeHash uint64 = 14000
+	Pala2P5Balance     uint64 = 14000
+	Pala2P5SLoad       uint64 = 16000
+	Pala2P5Calls       uint64 = 14000
+	RNGGasBumpV4       uint64 = 50
 )
 
 // Gas discount table for BLS12-381 G1 and G2 multi exponentiation operations

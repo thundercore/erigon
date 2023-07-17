@@ -106,8 +106,22 @@ func DoCall(
 	return result, nil
 }
 
+func MakeStateRootFromDBGetter(tx kv.Tx) func(evmtypes.TxContext) (*libcommon.Hash, error) {
+	return func(txC evmtypes.TxContext) (*libcommon.Hash, error) {
+		key := append(kv.TTStateRootKey, txC.TxHash.Bytes()...)
+		key = append(key, byte(txC.RNGCounter))
+
+		v, err := tx.GetOne(kv.TTConsensusInfo, key)
+		if err != nil {
+			return nil, err
+		}
+		sroot := libcommon.BytesToHash(v)
+		return &sroot, nil
+	}
+}
+
 func NewEVMBlockContext(engine consensus.EngineReader, header *types.Header, requireCanonical bool, tx kv.Tx, headerReader services.HeaderReader) evmtypes.BlockContext {
-	return core.NewEVMBlockContext(header, MakeHeaderGetter(requireCanonical, tx, headerReader), engine, nil /* author */)
+	return core.NewEVMBlockContext(header, MakeHeaderGetter(requireCanonical, tx, headerReader), engine, nil /* author */, MakeStateRootFromDBGetter(tx))
 }
 
 func MakeHeaderGetter(requireCanonical bool, tx kv.Tx, headerReader services.HeaderReader) func(uint64) libcommon.Hash {
